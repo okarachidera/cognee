@@ -1,0 +1,19 @@
+name: _perf rust smoke (temp)
+
+# TEMPORARY smoke harness — verifies performance_report_rust.yml actually builds
+# cognee-rs + runs the benchmark in CI, WITHOUT the nightly's Slack notify job.
+# Delete this file (and branch) once validated.
+on:
+  push:
+    branches: [test/perf-rust-smoke]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    uses: ./.github/workflows/performance_report_rust.yml
+    with:
+      runs: '2'
+    secrets: inherit

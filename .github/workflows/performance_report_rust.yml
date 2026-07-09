@@ -48,7 +48,9 @@ env:
 jobs:
   rust_file_based:
     name: rust file_based — 50_small_documents (mock_llm)
-    runs-on: ubuntu-22.04
+    # ubuntu-latest (not 22.04): lbug's bundled simsimd needs a C compiler with
+    # avx512fp16 / _Float16 support (GCC >= 12). This matches cognee-rs's own CI.
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     outputs:
       metrics: ${{ steps.parse.outputs.metrics }}
