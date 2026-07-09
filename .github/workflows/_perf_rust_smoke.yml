@@ -4,8 +4,6 @@ name: _perf rust smoke (temp)
 # cognee-rs + runs the benchmark in CI, WITHOUT the nightly's Slack notify job.
 # Delete this file (and branch) once validated.
 on:
-  push:
-    branches: [test/perf-rust-smoke]
   workflow_dispatch:
 
 permissions:

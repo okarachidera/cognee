@@ -1,0 +1,78 @@
+name: _perf cassette diag (temp)
+
+# TEMPORARY: A/B-tests the perf cassette on a LINUX runner. Replays both the
+# cassette committed on cognee-rs main AND the pre-#71 original, reporting how
+# many entity-type nodes each produces. Purpose: determine whether the cassette
+# staleness is a cross-platform (macOS-recorded vs Linux-CI) hashing mismatch.
+# Delete once resolved.
+on:
+  push:
+    branches: [test/perf-rust-smoke]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout cognee (holds the original-cassette fixture)
+        uses: actions/checkout@v6
+
+      - name: Checkout cognee-rs (latest)
+        uses: actions/checkout@v6
+        with:
+          repository: topoteretes/cognee-rs
+          path: cognee-rs
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: rui314/setup-mold@v1
+        with:
+          make-default: true
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler cmake
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          large-packages: false
+          docker-images: true
+          swap-storage: true
+      - name: Cache cargo + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cognee-rs
+          shared-key: perf-rust
+      - name: Cache ORT binary
+        uses: actions/cache@v4
+        with:
+          path: cognee-rs/target/ort-cache
+          key: ort-perf-rust-linux-x86_64
+
+      - name: Build cognee-cli (release, bench)
+        working-directory: cognee-rs
+        run: cargo build --release -p cognee-cli --features bench
+
+      - name: A/B replay both cassettes on Linux
+        env:
+          LOG_LEVEL: info
+        run: |
+          set -euo pipefail
+          BIN="$PWD/cognee-rs/target/release/cognee-cli"
+          CORPUS="$PWD/cognee-rs/scripts/perf/fixtures/memories.json"
+          probe () {
+            local cass="$1" label="$2" ch; ch="$(mktemp -d)"
+            local n
+            n="$(MOCK_EMBEDDING=deterministic COGNEE_CONFIG_HOME="$ch" "$BIN" bench \
+                  --mock-llm --mock-memories "$cass" --memories "$CORPUS" \
+                  --num-memories 8 --output /tmp/o.json 2>&1 \
+                  | grep -oE 'Stored [0-9]+ entity types as graph nodes' | grep -oE '[0-9]+' | head -1 || true)"
+            echo "| $label | entity_types=${n:-0} | $([ "${n:-0}" -ge 1 ] && echo HIT || echo MISS) |"
+            echo "| $label | entity_types=${n:-0} | $([ "${n:-0}" -ge 1 ] && echo HIT || echo MISS) |" >> "$GITHUB_STEP_SUMMARY"
+          }
+          echo "| cassette | result | verdict |" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|" | tee -a "$GITHUB_STEP_SUMMARY"
+          probe "$PWD/cognee-rs/scripts/perf/fixtures/cassette.json" "MINE (cognee-rs main, macOS-recorded)"
+          probe "$PWD/.github/perf-diag/orig_cassette.json"          "ORIGINAL (pre-#71)"
